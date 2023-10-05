@@ -10,7 +10,7 @@ from transformer import TransformerEncoder
 class TransformerPredictor(pl.LightningModule):
 
     def __init__(self, input_dim, model_dim, num_classes, num_heads, num_layers, lr, warmup, max_iters, dropout=0.0,
-                 input_dropout=0.0):
+                 input_dropout=0.0, use_pytorch_transformer=True):
         """
         Inputs:
             input_dim - Hidden dimensionality of the input
@@ -37,11 +37,19 @@ class TransformerPredictor(pl.LightningModule):
         # Positional encoding for sequences
         self.positional_encoding = PositionalEncoding(d_model=self.hparams.model_dim)
         # Transformer
-        self.transformer = TransformerEncoder(num_layers=self.hparams.num_layers,
-                                              input_dim=self.hparams.model_dim,
-                                              dim_feedforward=2 * self.hparams.model_dim,
-                                              num_heads=self.hparams.num_heads,
-                                              dropout=self.hparams.dropout)
+        if self.hparams.use_pytorch_transformer:
+            self.transformer = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=self.hparams.model_dim,
+                                                                                nhead=self.hparams.num_heads,
+                                                                                dim_feedforward=2 * self.hparams.model_dim,
+                                                                                dropout=self.hparams.dropout,
+                                                                                batch_first=True),
+                                                     num_layers=self.hparams.num_layers)
+        else:
+            self.transformer = TransformerEncoder(num_layers=self.hparams.num_layers,
+                                                  input_dim=self.hparams.model_dim,
+                                                  dim_feedforward=2 * self.hparams.model_dim,
+                                                  num_heads=self.hparams.num_heads,
+                                                  dropout=self.hparams.dropout)
         # Output classifier per sequence lement
         self.output_net = nn.Sequential(
             nn.Linear(self.hparams.model_dim, self.hparams.model_dim),
@@ -67,11 +75,24 @@ class TransformerPredictor(pl.LightningModule):
         return x
 
     @torch.no_grad()
+    def get_attention_maps_pytorch(self, x, mask=None, add_positional_encoding=True):
+        """
+        Function for extracting the attention matrices of the whole Transformer for a single batch.
+        Input arguments same as the forward pass.
+        This is when using the pytorch transformers library
+        """
+        raise NotImplementedError("Attention maps only implemented for Transformer.py")
+
+    @torch.no_grad()
     def get_attention_maps(self, x, mask=None, add_positional_encoding=True):
         """
         Function for extracting the attention matrices of the whole Transformer for a single batch.
         Input arguments same as the forward pass.
         """
+        if self.hparams.use_pytorch_transformer:
+            return self.get_attention_maps_pytorch(x, mask=mask, add_positional_encoding=add_positional_encoding)
+
+        # Get the attention maps from the transformer.py implementation
         x = self.input_net(x)
         if add_positional_encoding:
             x = self.positional_encoding(x)

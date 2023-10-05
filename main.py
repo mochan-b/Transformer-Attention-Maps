@@ -82,7 +82,9 @@ def plot_attention_maps(input_data, attn_maps, idx=0, avg=False):
             ax[row][column].set_yticks(list(range(seq_len)))
             ax[row][column].set_yticklabels(input_data.tolist())
             ax[row][column].set_title(f"Layer {row + 1}, Head {column + 1}")
-    fig.subplots_adjust(hspace=0.5)
+    # fig.subplots_adjust(hspace=0.5)
+    plt.subplots_adjust(wspace=0.1, hspace=0.1)  # adjust the space between plots
+    plt.tight_layout()
     plt.show()
 
 
@@ -114,11 +116,13 @@ if __name__ == '__main__':
     print(f"Val accuracy:  {(100.0 * reverse_result['val_acc']):4.2f}%")
     print(f"Test accuracy: {(100.0 * reverse_result['test_acc']):4.2f}%")
 
-    data_input, labels = next(iter(val_loader))
-    inp_data = F.one_hot(data_input, num_classes=reverse_model.hparams.num_classes).float()
-    inp_data = inp_data.to(device)
-    attention_maps = reverse_model.get_attention_maps(inp_data)
+    draw_attention_maps = True
+    if draw_attention_maps:
+        data_input, labels = next(iter(val_loader))
+        inp_data = F.one_hot(data_input, num_classes=reverse_model.hparams.num_classes).float()
+        inp_data = inp_data.to(device)
+        attention_maps = reverse_model.get_attention_maps(inp_data)
 
-    print(attention_maps[0].shape)
+        print(attention_maps[0].shape)
 
-    plot_attention_maps(data_input, attention_maps, idx=0, avg=True)
+        plot_attention_maps(data_input, attention_maps, idx=0, avg=False)

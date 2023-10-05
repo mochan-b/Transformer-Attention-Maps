@@ -89,6 +89,10 @@ def plot_attention_maps(input_data, attn_maps, idx=0, avg=False):
 
 
 if __name__ == '__main__':
+    # Options for running the script
+    always_train = True
+    use_pytorch_transformer = True
+
     num_categories = 10
 
     dataset_type = 'left_right_product'
@@ -104,7 +108,7 @@ if __name__ == '__main__':
     val_loader = data.DataLoader(dataset(1000), batch_size=128)
     test_loader = data.DataLoader(dataset(10000), batch_size=128)
 
-    reverse_model, reverse_result = train_reverse(train=False,
+    reverse_model, reverse_result = train_reverse(train=always_train,
                                                   input_dim=num_categories,
                                                   model_dim=32,
                                                   num_heads=2,
@@ -112,7 +116,8 @@ if __name__ == '__main__':
                                                   num_layers=2,
                                                   dropout=0.0,
                                                   lr=5e-4,
-                                                  warmup=50)
+                                                  warmup=50,
+                                                  use_pytorch_transformer=use_pytorch_transformer)
     print(f"Val accuracy:  {(100.0 * reverse_result['val_acc']):4.2f}%")
     print(f"Test accuracy: {(100.0 * reverse_result['test_acc']):4.2f}%")
 
@@ -125,4 +130,4 @@ if __name__ == '__main__':
 
         print(attention_maps[0].shape)
 
-        plot_attention_maps(data_input, attention_maps, idx=0, avg=False)
+        plot_attention_maps(data_input, attention_maps, idx=0, avg=True)

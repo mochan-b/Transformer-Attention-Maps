@@ -1,5 +1,8 @@
-from torch import nn, optim
+from typing import Optional, Tuple
+
 import torch
+from torch import Tensor
+from torch import nn, optim
 import pytorch_lightning as pl
 
 from cosine_warmup_scheduler import CosineWarmupScheduler
@@ -38,6 +41,7 @@ class TransformerPredictor(pl.LightningModule):
         self.positional_encoding = PositionalEncoding(d_model=self.hparams.model_dim)
         # Transformer
         if self.hparams.use_pytorch_transformer:
+            print('Using pytorch transformer')
             self.transformer = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=self.hparams.model_dim,
                                                                                 nhead=self.hparams.num_heads,
                                                                                 dim_feedforward=2 * self.hparams.model_dim,
@@ -75,13 +79,55 @@ class TransformerPredictor(pl.LightningModule):
         return x
 
     @torch.no_grad()
-    def get_attention_maps_pytorch(self, x, mask=None, add_positional_encoding=True):
+    def get_attention_maps_pytorch(self, x, mask=None):
         """
         Function for extracting the attention matrices of the whole Transformer for a single batch.
         Input arguments same as the forward pass.
         This is when using the pytorch transformers library
         """
-        raise NotImplementedError("Attention maps only implemented for Transformer.py")
+
+        print('Getting pytorch transformer attention maps')
+
+        # Attention maps for each layer
+        attention_maps = []
+
+        class SelfAttentionWrapper(nn.MultiheadAttention):
+            """
+            Wrapper for the self attention layer that captures the attention matrices into the attention_maps array
+            """
+            def __init__(self, _self_attn):
+                super().__init__(embed_dim=1, num_heads=1)  # Not going to be used
+                self._self_attn = _self_attn
+
+            def forward(self,
+                        query: Tensor,
+                        key: Tensor,
+                        value: Tensor,
+                        key_padding_mask: Optional[Tensor] = None,
+                        need_weights: bool = True,
+                        attn_mask: Optional[Tensor] = None,
+                        average_attn_weights: bool = True,
+                        is_causal: bool = False) -> Tuple[Tensor, Optional[Tensor]]:
+                # Put it through the attention layer that we got in construction
+                output = self._self_attn(query, key, value, key_padding_mask=key_padding_mask,
+                                                need_weights=True, attn_mask=attn_mask, average_attn_weights=False,
+                                                is_causal=is_causal)
+                attention_maps.append(output[1])  # output is (x, attention_weights)
+                return output
+
+            @property
+            def self_attn(self):
+                return self._self_attn
+
+        # Iterate over the layers and put our wrapper to capture the attention matrices
+        for layer in self.transformer.layers:
+            # Wrap the self attention and assign it
+            self_attention_wrapper = SelfAttentionWrapper(layer.self_attn)
+            layer.self_attn = self_attention_wrapper
+            x = layer(x)
+            layer.self_attn = self_attention_wrapper.self_attn  # Restore the original self attention
+
+        return attention_maps
 
     @torch.no_grad()
     def get_attention_maps(self, x, mask=None, add_positional_encoding=True):
@@ -89,13 +135,14 @@ class TransformerPredictor(pl.LightningModule):
         Function for extracting the attention matrices of the whole Transformer for a single batch.
         Input arguments same as the forward pass.
         """
-        if self.hparams.use_pytorch_transformer:
-            return self.get_attention_maps_pytorch(x, mask=mask, add_positional_encoding=add_positional_encoding)
-
-        # Get the attention maps from the transformer.py implementation
         x = self.input_net(x)
         if add_positional_encoding:
             x = self.positional_encoding(x)
+
+        if self.hparams.use_pytorch_transformer:
+            return self.get_attention_maps_pytorch(x, mask=mask)
+
+        # Get the attention maps from the transformer.py implementation
         attention_maps = self.transformer.get_attention_maps(x, mask=mask)
         return attention_maps
 
